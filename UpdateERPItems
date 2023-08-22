@@ -1,0 +1,120 @@
+-- CONECT TO GLOVO API MIHAIL DAMASCHIN BARON
+
+-- Crearea tabelului Nomenclator
+CREATE TABLE Nomenclator (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    Cod INT NOT NULL UNIQUE,
+    Denumire NVARCHAR(255) NOT NULL
+);
+
+-- Crearea tabelului Preturi
+CREATE TABLE Preturi (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    Cod INT FOREIGN KEY REFERENCES Nomenclator(Cod),
+    Pret DECIMAL(10, 2) NOT NULL,
+    Data_inferioara DATE NOT NULL,
+    Data_superioara DATE NOT NULL
+);
+
+--INSERT DATE
+
+INSERT INTO Nomenclator (Cod, Denumire) VALUES
+(1, 'Big Mac'),
+(2, 'Cheeseburger'),
+(3, 'McFlurry'),
+(4, 'Bucket KFC'),
+(5, 'Twister Wrap'),
+(6, 'Popcorn Chicken'),
+(7, 'Kaufland Sandwich'),
+(8, 'Kaufland Salad'),
+(9, 'Kaufland Soup'),
+(10, 'Dristor Kebab'),
+(11, 'Dristor Shawarma'),
+(12, 'Dristor Burger'),
+(13, 'Starbucks Latte'),
+(14, 'Starbucks Cappuccino'),
+(15, 'Starbucks Frappuccino'),
+(16, 'Mesopotamia Platter'),
+(17, 'Mesopotamia Kebab'),
+(18, 'Mesopotamia Salad'),
+(19, 'Taco Bell Taco'),
+(20, 'Taco Bell Burrito'),
+(21, 'Taco Bell Quesadilla'),
+(22, 'Subway Sandwich'),
+(23, 'Subway Salad'),
+(24, 'Subway Wrap');
+
+INSERT INTO Preturi (Cod, Pret, Data_inferioara, Data_superioara) VALUES
+(1, 5.99, '2023-01-01', '2023-12-31'),
+(2, 2.99, '2023-01-01', '2023-12-31'),
+(3, 3.49, '2023-01-01', '2023-12-31'),
+(4, 11.99, '2023-01-01', '2023-12-31'),
+(5, 4.99, '2023-01-01', '2023-12-31'),
+(6, 3.99, '2023-01-01', '2023-12-31'),
+(7, 6.49, '2023-01-01', '2023-12-31'),
+(8, 4.49, '2023-01-01', '2023-12-31'),
+(9, 3.99, '2023-01-01', '2023-12-31'),
+(10, 5.99, '2023-01-01', '2023-12-31'),
+(11, 6.99, '2023-01-01', '2023-12-31'),
+(12, 7.99, '2023-01-01', '2023-12-31'),
+(13, 4.49, '2023-01-01', '2023-12-31'),
+(14, 4.99, '2023-01-01', '2023-12-31'),
+(15, 5.49, '2023-01-01', '2023-12-31'),
+(16, 8.99, '2023-01-01', '2023-12-31'),
+(17, 9.49, '2023-01-01', '2023-12-31'),
+(18, 7.49, '2023-01-01', '2023-12-31'),
+(19, 3.99, '2023-01-01', '2023-12-31'),
+(20, 4.49, '2023-01-01', '2023-12-31'),
+(21, 4.99, '2023-01-01', '2023-12-31'),
+(22, 6.99, '2023-01-01', '2023-12-31'),
+(23, 5.99, '2023-01-01', '2023-12-31'),
+(24, 5.49, '2023-01-01', '2023-12-31');
+
+--PROCEDURA UpdateERPItems
+
+CREATE PROCEDURE UpdateERPItems
+AS
+BEGIN
+    
+    DECLARE @method NVARCHAR(10) = 'PATCH'
+    DECLARE @url NVARCHAR(255) = 'https://stageapi.glovoapp.com/webhook/stores/store-01/menu/updates'
+    DECLARE @header NVARCHAR(MAX) = 'Authorization: eb65deba-eae7-450b-b549-b206643c11bc; Content-Type: application/json'
+    DECLARE @body NVARCHAR(MAX) = ''
+    DECLARE @today DATE = GETDATE()
+
+    --  API
+    DECLARE product_cursor CURSOR FOR
+    SELECT 
+        n.Cod,
+        n.Denumire,
+        CONVERT(NVARCHAR, p.Pret),
+        CASE WHEN p.Data_inferioara <= @today AND p.Data_superioara >= @today THEN 'true' ELSE 'false' END
+    FROM Nomenclator AS n
+    JOIN Preturi AS p ON n.Cod = p.Cod
+    WHERE p.Data_inferioara <= @today AND p.Data_superioara >= @today -- Selectează doar prețurile valabile
+
+    DECLARE @cod INT, @denumire NVARCHAR(MAX), @pret NVARCHAR(MAX), @available NVARCHAR(5)
+
+    OPEN product_cursor
+
+    FETCH NEXT FROM product_cursor INTO @cod, @denumire, @pret, @available
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @body = @body + FORMATMESSAGE(
+            '{"id": "%d", "name": "%s", "price": "%s", "available": %s},',
+            @cod, @denumire, @pret, @available
+        )
+        FETCH NEXT FROM product_cursor INTO @cod, @denumire, @pret, @available
+    END
+
+    CLOSE product_cursor
+    DEALLOCATE product_cursor
+
+    --obiect JSON
+    SET @body = '{"products": [' + LEFT(@body, LEN(@body) - 1) + ']}'
+
+    -- Apelul procedurii API
+    EXEC ApiRequest @method, @url, @header, @body
+END
+
+
